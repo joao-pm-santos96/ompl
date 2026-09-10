@@ -4,6 +4,7 @@
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/function.h>
 #include <nanobind/stl/pair.h>
+#include <nanobind/stl/tuple.h>
 #include <sstream>
 
 #include "ompl/base/SpaceInformation.h"
@@ -22,10 +23,10 @@ static PyObject **get_dict_ptr(PyObject *obj)
 }
 
 // States handed to Python are owned by their wrapper: ompl::base::State has a protected destructor, so
-// nanobind cannot release one on its own, and freeing by hand would collide with this deleter.
+// nanobind cannot release one on its own. The deleter holds the space that allocated the state.
 static std::shared_ptr<ompl::base::State> ownedState(const ompl::base::SpaceInformation &si, ompl::base::State *state)
 {
-    return {state, [&si](ompl::base::State *s) { si.freeState(s); }};
+    return {state, [space = si.getStateSpace()](ompl::base::State *s) { space->freeState(s); }};
 }
 
 int space_information_tp_traverse(PyObject *self, visitproc visit, void *arg)
@@ -94,7 +95,11 @@ void ompl::binding::base::init_SpaceInformation(nb::module_ &m)
                 nb::object keeper = gc::keeper(self, func);
                 si.setStateValidityChecker(
                     [fn = nb::handle(func), keeper](const ompl::base::State *state)
-                    { return nb::cast<bool>(fn(state)); });
+                    {
+                        // PRM and LazyPRM call this from their solution-checking thread.
+                        nb::gil_scoped_acquire gil;
+                        return nb::cast<bool>(fn(state));
+                    });
                 // Only now: publishing first would drop the previous callback while OMPL still borrows it.
                 if (self.is_valid()) nb::setattr(self, "_svc", func);
             },
@@ -110,20 +115,25 @@ void ompl::binding::base::init_SpaceInformation(nb::module_ &m)
             },
             nb::arg("svc"))
         .def("getStateValidityChecker", &ompl::base::SpaceInformation::getStateValidityChecker)
-        .def("setMotionValidator", &ompl::base::SpaceInformation::setMotionValidator)
+        .def(
+            "setMotionValidator",
+            [](ompl::base::SpaceInformation &si, ompl::base::MotionValidator *mv)
+            {
+                gc::installBorrowed<ompl::base::MotionValidatorPtr>(
+                    nb::find(si), "_mv", mv,
+                    [&si](const ompl::base::MotionValidatorPtr &v) { si.setMotionValidator(v); });
+            },
+            nb::arg("mv"))
         .def("getMotionValidator", nb::overload_cast<>(&ompl::base::SpaceInformation::getMotionValidator, nb::const_))
         .def("setStateValidityCheckingResolution", &ompl::base::SpaceInformation::setStateValidityCheckingResolution)
         .def("getStateValidityCheckingResolution", &ompl::base::SpaceInformation::getStateValidityCheckingResolution)
-        // keep_alive: the returned state (index 0) keeps self (index 1) alive for its deleter
-        .def(
-            "allocState", [](const ompl::base::SpaceInformation &si) { return ownedState(si, si.allocState()); },
-            nb::keep_alive<0, 1>())
+        .def("allocState", [](const ompl::base::SpaceInformation &si) { return ownedState(si, si.allocState()); })
         .def("copyState", &ompl::base::SpaceInformation::copyState)
         .def(
             "cloneState",
             [](const ompl::base::SpaceInformation &si, const ompl::base::State *source)
             { return ownedState(si, si.cloneState(source)); },
-            nb::arg("source"), nb::keep_alive<0, 1>())
+            nb::arg("source"))
 
         .def("allocStateSampler", &ompl::base::SpaceInformation::allocStateSampler)
         .def("allocValidStateSampler", &ompl::base::SpaceInformation::allocValidStateSampler)
@@ -137,15 +147,45 @@ void ompl::binding::base::init_SpaceInformation(nb::module_ &m)
 
         .def("checkMotion", nb::overload_cast<const ompl::base::State*, const ompl::base::State*>(&ompl::base::SpaceInformation::checkMotion, nb::const_))
 
-       .def("checkMotion", nb::overload_cast<const std::vector<ompl::base::State*>&, unsigned int, unsigned int&>(&ompl::base::SpaceInformation::checkMotion, nb::const_))
+        .def(
+            "checkMotionFirstInvalid",
+            [](const ompl::base::SpaceInformation &si, const std::vector<ompl::base::State *> &states,
+               unsigned int count)
+            {
+                unsigned int firstInvalid = 0;
+                bool valid = si.checkMotion(states, count, firstInvalid);
+                return std::make_pair(valid, firstInvalid);
+            },
+            nb::arg("states"), nb::arg("count"))
         .def("checkMotion", nb::overload_cast<const std::vector<ompl::base::State*>&, unsigned int>(&ompl::base::SpaceInformation::checkMotion, nb::const_))
 
-        .def("getMotionStates", &ompl::base::SpaceInformation::getMotionStates)
+        .def(
+            "getMotionStates",
+            [](const ompl::base::SpaceInformation &si, const ompl::base::State *s1, const ompl::base::State *s2,
+               unsigned int count, bool endpoints)
+            {
+                std::vector<ompl::base::State *> states;
+                unsigned int added = si.getMotionStates(s1, s2, states, count, endpoints, true);
+                std::vector<std::shared_ptr<ompl::base::State>> owned;
+                owned.reserve(added);
+                for (unsigned int i = 0; i < added; ++i)
+                    owned.push_back(ownedState(si, states[i]));
+                return owned;
+            },
+            nb::arg("s1"), nb::arg("s2"), nb::arg("count"), nb::arg("endpoints") = true)
         .def("getCheckedMotionCount", &ompl::base::SpaceInformation::getCheckedMotionCount)
 
         .def("probabilityOfValidState", &ompl::base::SpaceInformation::probabilityOfValidState)
         .def("averageValidMotionLength", &ompl::base::SpaceInformation::averageValidMotionLength)
-        .def("samplesPerSecond", &ompl::base::SpaceInformation::samplesPerSecond)
+        .def(
+            "samplesPerSecond",
+            [](const ompl::base::SpaceInformation &si, unsigned int attempts)
+            {
+                double uniform = 0.0, near = 0.0, gaussian = 0.0;
+                si.samplesPerSecond(uniform, near, gaussian, attempts);
+                return std::make_tuple(uniform, near, gaussian);
+            },
+            nb::arg("attempts"))
         // Virtual method: printSettings
         .def("printSettings", [](const ompl::base::SpaceInformation &si) { si.printSettings(std::cout); })
         .def("settings", [](const ompl::base::SpaceInformation &si) {

@@ -126,9 +126,14 @@ void ompl::binding::control::init_SpaceInformation(nb::module_ &m)
                 // See PyGC.h: the strong reference belongs in __dict__, not inside the std::function.
                 nb::handle self = nb::find(si);
                 nb::object keeper = gc::keeper(self, sp);
-                si.setStatePropagator([fn = nb::handle(sp), keeper](const ob::State *state, const oc::Control *control,
-                                                                    double duration, ob::State *result)
-                                      { fn(state, control, duration, result); });
+                si.setStatePropagator(
+                    [fn = nb::handle(sp), keeper](const ob::State *state, const oc::Control *control, double duration,
+                                                 ob::State *result)
+                    {
+                        // Planners may propagate from a helper thread.
+                        nb::gil_scoped_acquire gil;
+                        fn(state, control, duration, result);
+                    });
                 // Only now: publishing first would drop the previous callback while OMPL still borrows it.
                 if (self.is_valid())
                     nb::setattr(self, "_prop", sp);

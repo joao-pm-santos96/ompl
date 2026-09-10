@@ -193,7 +193,11 @@ void ompl::binding::geometric::init_SimpleSetup(nb::module_ &m)
              nb::object keeper = gc::keeper(self, svc);
              ss.setStateValidityChecker(
                  [fn = nb::handle(svc), keeper](const ompl::base::State *state)
-                 { return nb::cast<bool>(fn(state)); });
+                 {
+                     // PRM and LazyPRM call this from their solution-checking thread.
+                     nb::gil_scoped_acquire gil;
+                     return nb::cast<bool>(fn(state));
+                 });
              // Only now: publishing first would drop the previous callback while OMPL still borrows it.
              if (self.is_valid()) nb::setattr(self, "_svc", svc);
          },

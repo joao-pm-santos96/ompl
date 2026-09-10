@@ -68,14 +68,32 @@ namespace
         PyGoalLazySamples(const PyGoalLazySamples &) = delete;
         PyGoalLazySamples &operator=(const PyGoalLazySamples &) = delete;
     };
+    // Goal::si_ was built by nanobind's shared_ptr caster, whose reference the collector cannot see.
+    int goalTraverse(PyObject *self, visitproc visit, void *arg)
+    {
+        if (int rc = gc::traverse<PyGoalLazySamples, &PyGoalLazySamples::sampler,
+                                  &PyGoalLazySamples::newStateCallback>(self, visit, arg);
+            rc != 0)
+            return rc;
+        if (!nb::inst_ready(self))
+            return 0;
+
+        nb::object si = nb::find(nb::inst_ptr<PyGoalLazySamples>(self)->getSpaceInformation());
+        if (si.is_valid())
+            Py_VISIT(si.ptr());
+        return 0;
+    }
+
+    PyType_Slot goalSlots[] = {
+        {Py_tp_traverse, (void *)goalTraverse},
+        {Py_tp_clear,
+         (void *)gc::clear<PyGoalLazySamples, &PyGoalLazySamples::sampler, &PyGoalLazySamples::newStateCallback>},
+        {0, 0}};
 }  // namespace
 
 void ompl::binding::base::initGoals_GoalLazySamples(nb::module_ &m)
 {
-    nb::class_<PyGoalLazySamples, ob::GoalStates>(
-        m, "GoalLazySamples",
-        nb::type_slots(
-            gc::gcSlots<PyGoalLazySamples, &PyGoalLazySamples::sampler, &PyGoalLazySamples::newStateCallback>))
+    nb::class_<PyGoalLazySamples, ob::GoalStates>(m, "GoalLazySamples", nb::type_slots(goalSlots))
         .def(
             "__init__",
             [](PyGoalLazySamples *self, const ob::SpaceInformationPtr &si, nb::callable samplerFunc, bool autoStart,

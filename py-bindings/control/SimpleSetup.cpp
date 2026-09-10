@@ -175,8 +175,13 @@ void ompl::binding::control::init_SimpleSetup(nb::module_ &m)
                 // See PyGC.h: the strong reference belongs in __dict__, not inside the std::function.
                 nb::handle self = nb::find(ss);
                 nb::object keeper = gc::keeper(self, svc);
-                ss.setStateValidityChecker([fn = nb::handle(svc), keeper](const ompl::base::State *state)
-                                           { return nb::cast<bool>(fn(state)); });
+                ss.setStateValidityChecker(
+                    [fn = nb::handle(svc), keeper](const ompl::base::State *state)
+                    {
+                        // Planners may check validity from a helper thread.
+                        nb::gil_scoped_acquire gil;
+                        return nb::cast<bool>(fn(state));
+                    });
                 // Only now: publishing first would drop the previous callback while OMPL still borrows it.
                 if (self.is_valid())
                     nb::setattr(self, "_svc", svc);
@@ -212,9 +217,14 @@ void ompl::binding::control::init_SimpleSetup(nb::module_ &m)
             {
                 nb::handle self = nb::find(ss);
                 nb::object keeper = gc::keeper(self, sp);
-                ss.setStatePropagator([fn = nb::handle(sp), keeper](
-                                          const ompl::base::State *state, const oc::Control *control, double duration,
-                                          ompl::base::State *result) { fn(state, control, duration, result); });
+                ss.setStatePropagator(
+                    [fn = nb::handle(sp), keeper](const ompl::base::State *state, const oc::Control *control,
+                                                 double duration, ompl::base::State *result)
+                    {
+                        // Planners may propagate from a helper thread.
+                        nb::gil_scoped_acquire gil;
+                        fn(state, control, duration, result);
+                    });
                 // Only now: publishing first would drop the previous callback while OMPL still borrows it.
                 if (self.is_valid())
                     nb::setattr(self, "_prop", sp);
