@@ -21,6 +21,13 @@ static PyObject **get_dict_ptr(PyObject *obj)
     return gc::dictPtr(obj);
 }
 
+// States handed to Python are owned by their wrapper: ompl::base::State has a protected destructor, so
+// nanobind cannot release one on its own, and freeing by hand would collide with this deleter.
+static std::shared_ptr<ompl::base::State> ownedState(const ompl::base::SpaceInformation &si, ompl::base::State *state)
+{
+    return {state, [&si](ompl::base::State *s) { si.freeState(s); }};
+}
+
 int space_information_tp_traverse(PyObject *self, visitproc visit, void *arg)
 {
     Py_VISIT(Py_TYPE(self));
@@ -107,18 +114,16 @@ void ompl::binding::base::init_SpaceInformation(nb::module_ &m)
         .def("getMotionValidator", nb::overload_cast<>(&ompl::base::SpaceInformation::getMotionValidator, nb::const_))
         .def("setStateValidityCheckingResolution", &ompl::base::SpaceInformation::setStateValidityCheckingResolution)
         .def("getStateValidityCheckingResolution", &ompl::base::SpaceInformation::getStateValidityCheckingResolution)
-        .def("allocState", [](const ompl::base::SpaceInformation &si) {
-            ompl::base::State* state = si.allocState();
-            return std::shared_ptr<ompl::base::State>(
-                state,
-                [&si](ompl::base::State* s) {
-                    si.freeState(s);
-                }
-            );
-        }, nb::keep_alive<0, 1>()) // Return value (index 0) keeps self (index 1) alive
-        .def("freeState", &ompl::base::SpaceInformation::freeState)
+        // keep_alive: the returned state (index 0) keeps self (index 1) alive for its deleter
+        .def(
+            "allocState", [](const ompl::base::SpaceInformation &si) { return ownedState(si, si.allocState()); },
+            nb::keep_alive<0, 1>())
         .def("copyState", &ompl::base::SpaceInformation::copyState)
-        .def("cloneState", &ompl::base::SpaceInformation::cloneState)
+        .def(
+            "cloneState",
+            [](const ompl::base::SpaceInformation &si, const ompl::base::State *source)
+            { return ownedState(si, si.cloneState(source)); },
+            nb::arg("source"), nb::keep_alive<0, 1>())
 
         .def("allocStateSampler", &ompl::base::SpaceInformation::allocStateSampler)
         .def("allocValidStateSampler", &ompl::base::SpaceInformation::allocValidStateSampler)
