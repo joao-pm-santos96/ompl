@@ -2,6 +2,7 @@
 #include <nanobind/stl/shared_ptr.h>
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/string.h>
+#include <nanobind/stl/tuple.h>
 #include <sstream>
 
 // Include the OMPL headers for ProblemDefinition and related classes.
@@ -88,9 +89,13 @@ void ompl::binding::base::init_ProblemDefinition(nb::module_ &m)
              nb::rv_policy::reference_internal)
         .def("setIntermediateSolutionCallback", &ompl::base::ProblemDefinition::setIntermediateSolutionCallback)
 
-        // isTrivial: Bind a version that takes pointer parameters.
-        .def("isTrivial", nb::overload_cast<unsigned int*, double*>
-             (&ompl::base::ProblemDefinition::isTrivial, nb::const_))
+        // isTrivial: report the start index and distance the pointer arguments would have written.
+        .def("isTrivialWithDetails", [](const ompl::base::ProblemDefinition &pd) {
+            unsigned int startIndex = 0;
+            double distance = 0.0;
+            bool trivial = pd.isTrivial(&startIndex, &distance);
+            return std::make_tuple(trivial, startIndex, distance);
+        })
         // Also provide a simpler overload that calls isTrivial with nullptr for outputs.
         .def("isTrivial", [](const ompl::base::ProblemDefinition &pd) {
             return pd.isTrivial(nullptr, nullptr);

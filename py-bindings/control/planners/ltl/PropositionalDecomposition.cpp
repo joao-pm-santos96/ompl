@@ -37,5 +37,13 @@ void ompl::binding::control::initPlannersLtl_PropositionalDecomposition(nb::modu
         .def("getRegionVolume", &oc::PropositionalDecomposition::getRegionVolume, nb::arg("rid"))
         .def("locateRegion", &oc::PropositionalDecomposition::locateRegion, nb::arg("s"))
         .def("project", &oc::PropositionalDecomposition::project, nb::arg("s"), nb::arg("coord"))
-        .def("getNeighbors", &oc::PropositionalDecomposition::getNeighbors, nb::arg("rid"), nb::arg("neighbors"));
+        .def(
+            "getNeighbors",
+            [](oc::PropositionalDecomposition &d, int rid)
+            {
+                std::vector<int> neighbors;
+                d.getNeighbors(rid, neighbors);
+                return neighbors;
+            },
+            nb::arg("rid"));
 }

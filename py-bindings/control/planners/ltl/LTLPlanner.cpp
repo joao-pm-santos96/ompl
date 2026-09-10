@@ -27,5 +27,11 @@ void ompl::binding::control::initPlannersLtl_LTLPlanner(nb::module_ &m)
              })
         .def("clear", &oc::LTLPlanner::clear)
         .def("setup", &oc::LTLPlanner::setup)
-        .def("getTree", &oc::LTLPlanner::getTree, nb::arg("tree"));
+        .def("getTree",
+             [](oc::LTLPlanner &planner)
+             {
+                 std::vector<ob::State *> tree;
+                 planner.getTree(tree);
+                 return tree;
+             });
 }
