@@ -219,7 +219,7 @@ void ompl::binding::control::init_SimpleSetup(nb::module_ &m)
                 nb::object keeper = gc::keeper(self, sp);
                 ss.setStatePropagator(
                     [fn = nb::handle(sp), keeper](const ompl::base::State *state, const oc::Control *control,
-                                                 double duration, ompl::base::State *result)
+                                                  double duration, ompl::base::State *result)
                     {
                         // Planners may propagate from a helper thread.
                         nb::gil_scoped_acquire gil;

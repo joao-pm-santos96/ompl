@@ -33,14 +33,13 @@ void ompl::binding::base::init_StateSpace(nb::module_ &m)
         .def("setValidSegmentCountFactor", &ob::StateSpace::setValidSegmentCountFactor, nb::arg("factor"))
         .def("getValidSegmentCountFactor", &ob::StateSpace::getValidSegmentCountFactor)
         .def("getLongestValidSegmentLength", &ob::StateSpace::getLongestValidSegmentLength)
-        .def(
-            "computeSignature",
-            [](const ob::StateSpace &space)
-            {
-                std::vector<int> signature;
-                space.computeSignature(signature);
-                return signature;
-            })
+        .def("computeSignature",
+             [](const ob::StateSpace &space)
+             {
+                 std::vector<int> signature;
+                 space.computeSignature(signature);
+                 return signature;
+             })
         .def("cloneState", &ob::StateSpace::cloneState, nb::arg("source"), nb::rv_policy::take_ownership)
         .def("getSerializationLength", &ob::StateSpace::getSerializationLength)
         .def("getValueAddressAtIndex",

@@ -33,8 +33,7 @@ void ompl::binding::base::init_ProjectionEvaluator(nb::module_ &m)
              nb::arg("from"), nb::arg("to"))
         .def(
             "project",
-            [](const ompl::base::ProjectionMatrix &pm, const std::vector<double> &from,
-               Eigen::Ref<Eigen::VectorXd> to)
+            [](const ompl::base::ProjectionMatrix &pm, const std::vector<double> &from, Eigen::Ref<Eigen::VectorXd> to)
             {
                 // project() reads mat.cols() doubles through the raw pointer.
                 if (from.size() != static_cast<std::size_t>(pm.mat.cols()))

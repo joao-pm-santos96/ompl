@@ -71,8 +71,8 @@ namespace
     // Goal::si_ was built by nanobind's shared_ptr caster, whose reference the collector cannot see.
     int goalTraverse(PyObject *self, visitproc visit, void *arg)
     {
-        if (int rc = gc::traverse<PyGoalLazySamples, &PyGoalLazySamples::sampler,
-                                  &PyGoalLazySamples::newStateCallback>(self, visit, arg);
+        if (int rc = gc::traverse<PyGoalLazySamples, &PyGoalLazySamples::sampler, &PyGoalLazySamples::newStateCallback>(
+                self, visit, arg);
             rc != 0)
             return rc;
         if (!nb::inst_ready(self))

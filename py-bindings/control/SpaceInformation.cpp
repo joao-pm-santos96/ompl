@@ -128,7 +128,7 @@ void ompl::binding::control::init_SpaceInformation(nb::module_ &m)
                 nb::object keeper = gc::keeper(self, sp);
                 si.setStatePropagator(
                     [fn = nb::handle(sp), keeper](const ob::State *state, const oc::Control *control, double duration,
-                                                 ob::State *result)
+                                                  ob::State *result)
                     {
                         // Planners may propagate from a helper thread.
                         nb::gil_scoped_acquire gil;
